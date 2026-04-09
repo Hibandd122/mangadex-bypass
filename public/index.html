@@ -39,10 +39,10 @@
 
         <div class="bg-gray-800/30 rounded-2xl border border-gray-700 p-6 shadow-inner">
             <div class="flex items-center justify-between mb-3">
-                <h2 class="text-lg font-semibold flex items-center gap-2"><span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> Nhật ký tải</h2>
+                <h2 class="text-lg font-semibold flex items-center gap-2"><span class="w-2 h-2 bg-green-500 rounded-full"></span> Trạng thái</h2>
                 <button id="clearLogs" class="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg transition">Clear</button>
             </div>
-            <div id="logContainer" class="log-container bg-black/30 rounded-xl p-4 h-64 overflow-y-auto font-mono text-sm border border-gray-800">
+            <div id="logContainer" class="log-container bg-black/30 rounded-xl p-4 h-48 overflow-y-auto font-mono text-sm border border-gray-800">
                 <div class="text-gray-500">✨ Sẵn sàng. Nhập URL và nhấn Tải.</div>
             </div>
         </div>
@@ -55,16 +55,10 @@
         const clearBtn = document.getElementById('clearLogs');
         const cookieWarning = document.getElementById('cookieWarning');
 
-        // Kiểm tra cookie warning từ server (có thể inject biến từ template)
         fetch('/api/config')
             .then(r => r.json())
-            .then(cfg => {
-                if (!cfg.hasCookie) cookieWarning.classList.remove('hidden');
-            })
+            .then(cfg => { if (!cfg.hasCookie) cookieWarning.classList.remove('hidden'); })
             .catch(() => {});
-
-        let ws = null;
-        let currentLogId = null;
 
         function addLog(message, type = 'info') {
             const div = document.createElement('div');
@@ -82,21 +76,6 @@
             if (logContainer.children.length > 50) logContainer.removeChild(logContainer.firstChild);
         }
 
-        function connectWebSocket(logId) {
-            if (ws) ws.close();
-            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            ws = new WebSocket(`${protocol}//${location.host}`);
-            ws.logId = logId;
-            ws.onopen = () => console.log('WebSocket connected');
-            ws.onmessage = (e) => {
-                try {
-                    const { message, type } = JSON.parse(e.data);
-                    addLog(message, type);
-                } catch (err) {}
-            };
-            ws.onerror = () => addLog('⚠️ Lỗi kết nối WebSocket', 'warn');
-        }
-
         async function startDownload() {
             const url = urlInput.value.trim();
             if (!url) return addLog('❌ Vui lòng nhập URL', 'error');
@@ -104,10 +83,7 @@
             addLog(`🔍 Đang xử lý: ${url}`, 'info');
             downloadBtn.disabled = true;
             downloadBtn.innerHTML = '<div class="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Đang tải...';
-
-            const logId = Date.now() + '-' + Math.random().toString(36);
-            currentLogId = logId;
-            connectWebSocket(logId);
+            addLog('⏳ Đang chuẩn bị ZIP, vui lòng đợi...', 'warn');
 
             try {
                 const response = await fetch(`/api/download?url=${encodeURIComponent(url)}`);
@@ -139,7 +115,6 @@
             } finally {
                 downloadBtn.disabled = false;
                 downloadBtn.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg> Tải ZIP';
-                if (ws) ws.close();
             }
         }
 
