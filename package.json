@@ -1,7 +1,6 @@
 {
   "name": "mangadex-proxy",
   "version": "2.0.0",
-  "description": "Unified proxy downloader for MangaDex and Pixiv",
   "main": "mangadex_node_proxy.js",
   "scripts": {
     "start": "node mangadex_node_proxy.js"
@@ -15,6 +14,5 @@
   },
   "engines": {
     "node": "24.x"
-  },
-  "license": "MIT"
+  }
 }
