@@ -64,7 +64,10 @@ app.get('/api/mangadex/image', async (req, res) => {
         const customAgent = new https.Agent({
             lookup: (hostname, options, callback) => {
                 if (hostname === originalHost) {
-                    callback(null, realIP, 4); // Inject IP IPv4 thật lấy từ DoH
+                    if (options && options.all) {
+                        return callback(null, [{ address: realIP, family: 4 }]);
+                    }
+                    return callback(null, realIP, 4);
                 } else {
                     require('dns').lookup(hostname, options, callback);
                 }
@@ -101,7 +104,8 @@ app.get('/api/mangadex/image', async (req, res) => {
 
     } catch (error) {
         console.error("Proxy Error:", error.message);
-        return res.status(500).json({ 
+        const status = error.response ? error.response.status : 500;
+        return res.status(status).json({ 
             error: "Fetch Failed", 
             details: error.message 
         });
