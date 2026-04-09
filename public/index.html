@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📦 Unified Proxy Downloader</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .log-container::-webkit-scrollbar { width: 6px; }
+        .log-container::-webkit-scrollbar-thumb { background: #4B5563; border-radius: 3px; }
+        .animate-spin { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans antialiased">
+    <div class="max-w-4xl mx-auto px-4 py-8">
+        <div class="flex items-center gap-3 mb-8">
+            <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center text-xl">📦</div>
+            <h1 class="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                Unified Proxy Downloader
+            </h1>
+        </div>
+
+        <div class="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-2xl p-6 shadow-xl mb-6">
+            <label class="block text-sm font-medium text-gray-300 mb-2">🔗 Dán URL truyện / chapter</label>
+            <div class="flex flex-col sm:flex-row gap-3">
+                <input type="text" id="urlInput" placeholder="https://mangadex.org/chapter/... hoặc pixiv..."
+                    class="flex-1 bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                <button id="downloadBtn" class="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium px-6 py-3 rounded-xl shadow-lg shadow-blue-900/20 transition flex items-center justify-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                    Tải ZIP
+                </button>
+            </div>
+            <p class="text-xs text-gray-500 mt-2 flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-green-500"></span> Hỗ trợ: MangaDex, Pixiv Art, Pixiv Comic
+                <span id="cookieWarning" class="text-yellow-400 ml-2 hidden">⚠️ Pixiv không có cookie, tải ảnh regular</span>
+            </p>
+        </div>
+
+        <div class="bg-gray-800/30 rounded-2xl border border-gray-700 p-6 shadow-inner">
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="text-lg font-semibold flex items-center gap-2"><span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> Nhật ký tải</h2>
+                <button id="clearLogs" class="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg transition">Clear</button>
+            </div>
+            <div id="logContainer" class="log-container bg-black/30 rounded-xl p-4 h-64 overflow-y-auto font-mono text-sm border border-gray-800">
+                <div class="text-gray-500">✨ Sẵn sàng. Nhập URL và nhấn Tải.</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const urlInput = document.getElementById('urlInput');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const logContainer = document.getElementById('logContainer');
+        const clearBtn = document.getElementById('clearLogs');
+        const cookieWarning = document.getElementById('cookieWarning');
+
+        // Kiểm tra cookie warning từ server (có thể inject biến từ template)
+        fetch('/api/config')
+            .then(r => r.json())
+            .then(cfg => {
+                if (!cfg.hasCookie) cookieWarning.classList.remove('hidden');
+            })
+            .catch(() => {});
+
+        let ws = null;
+        let currentLogId = null;
+
+        function addLog(message, type = 'info') {
+            const div = document.createElement('div');
+            const colors = {
+                info: 'text-gray-300',
+                success: 'text-green-400',
+                error: 'text-red-400',
+                warn: 'text-yellow-400',
+                done: 'text-blue-400 font-bold'
+            };
+            div.className = `${colors[type] || 'text-gray-300'} py-0.5 border-b border-gray-800/50 last:border-0`;
+            div.textContent = message;
+            logContainer.appendChild(div);
+            logContainer.scrollTop = logContainer.scrollHeight;
+            if (logContainer.children.length > 50) logContainer.removeChild(logContainer.firstChild);
+        }
+
+        function connectWebSocket(logId) {
+            if (ws) ws.close();
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${location.host}`);
+            ws.logId = logId;
+            ws.onopen = () => console.log('WebSocket connected');
+            ws.onmessage = (e) => {
+                try {
+                    const { message, type } = JSON.parse(e.data);
+                    addLog(message, type);
+                } catch (err) {}
+            };
+            ws.onerror = () => addLog('⚠️ Lỗi kết nối WebSocket', 'warn');
+        }
+
+        async function startDownload() {
+            const url = urlInput.value.trim();
+            if (!url) return addLog('❌ Vui lòng nhập URL', 'error');
+
+            addLog(`🔍 Đang xử lý: ${url}`, 'info');
+            downloadBtn.disabled = true;
+            downloadBtn.innerHTML = '<div class="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Đang tải...';
+
+            const logId = Date.now() + '-' + Math.random().toString(36);
+            currentLogId = logId;
+            connectWebSocket(logId);
+
+            try {
+                const response = await fetch(`/api/download?url=${encodeURIComponent(url)}`);
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.error || 'Lỗi server');
+                }
+
+                const blob = await response.blob();
+                const contentDisposition = response.headers.get('Content-Disposition');
+                let filename = 'download.zip';
+                if (contentDisposition) {
+                    const match = contentDisposition.match(/filename\*=UTF-8''(.+)/);
+                    if (match) filename = decodeURIComponent(match[1]);
+                }
+
+                const downloadUrl = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = downloadUrl;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(downloadUrl);
+
+                addLog(`🎉 Tải thành công: ${filename}`, 'done');
+            } catch (error) {
+                addLog(`❌ Lỗi: ${error.message}`, 'error');
+            } finally {
+                downloadBtn.disabled = false;
+                downloadBtn.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg> Tải ZIP';
+                if (ws) ws.close();
+            }
+        }
+
+        downloadBtn.addEventListener('click', startDownload);
+        urlInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') startDownload(); });
+        clearBtn.addEventListener('click', () => { logContainer.innerHTML = '<div class="text-gray-500">✨ Đã xóa nhật ký.</div>'; });
+    </script>
+</body>
+</html>
