@@ -1,6 +1,7 @@
 // ============================================
 // UNIFIED PROXY — VERCEL EDITION
 // MangaDex (title + chọn chapter) + Pixiv Artworks + Pixiv User
+// Tự động lấy PHPSESSID nếu không có trong env
 // ============================================
 
 const express = require('express');
@@ -66,78 +67,112 @@ async function streamZip(res, filename, items, getHeaders, concurrency = 3) {
     await archive.finalize();
 }
 
-// ─── PIXIV HELPERS ──────────────────────────────────────────────────────────
-function getPixivHeaders() {
+// ─── PIXIV AUTO COOKIE ──────────────────────────────────────────────────────
+/**
+ * Tự động lấy cookie Pixiv bằng cách truy cập URL user/artwork.
+ * Trả về chuỗi cookie (định dạng "key=value; key2=value2") hoặc null.
+ */
+async function acquirePixivCookie(sampleUrl) {
+    try {
+        // Dùng URL mẫu (trang user hoặc artwork) để lấy cookie
+        const response = await axios.get(sampleUrl, {
+            headers: { 'User-Agent': DEFAULT_USER_AGENT },
+            maxRedirects: 5,
+            timeout: 15000
+        });
+
+        const setCookieHeaders = response.headers['set-cookie'];
+        if (!setCookieHeaders) return null;
+
+        // Parse cookie đơn giản: lấy tất cả name=value (bỏ qua các thuộc tính)
+        const cookies = setCookieHeaders.map(cookieStr => {
+            const parts = cookieStr.split(';');
+            return parts[0].trim(); // "PHPSESSID=..."
+        }).filter(c => c.includes('='));
+
+        // Chỉ cần PHPSESSID là đủ, nhưng có thể gửi kèm các cookie khác
+        const phpsessid = cookies.find(c => c.startsWith('PHPSESSID='));
+        if (phpsessid) {
+            console.log('[Pixiv] Acquired cookie:', phpsessid);
+            return cookies.join('; ');
+        }
+        return null;
+    } catch (e) {
+        console.error('[Pixiv] Failed to acquire cookie:', e.message);
+        return null;
+    }
+}
+
+/**
+ * Trả về headers cần thiết cho API Pixiv, tự động thêm cookie nếu có.
+ */
+async function getPixivHeaders(refererUrl = 'https://www.pixiv.net/') {
     const headers = {
         'User-Agent': DEFAULT_USER_AGENT,
-        'Referer': 'https://www.pixiv.net/'
+        'Referer': refererUrl
     };
-    if (PIXIV_PHPSESSID) {
-        headers.Cookie = `PHPSESSID=${PIXIV_PHPSESSID}`;
+
+    let cookie = PIXIV_PHPSESSID ? `PHPSESSID=${PIXIV_PHPSESSID}` : null;
+    if (!cookie) {
+        // Thử lấy cookie mới từ refererUrl (hoặc trang chủ)
+        const acquired = await acquirePixivCookie(refererUrl);
+        if (acquired) cookie = acquired;
+    }
+
+    if (cookie) {
+        headers.Cookie = cookie;
     }
     return headers;
 }
 
-// Lấy danh sách artworks của user (có phân trang)
-async function fetchUserAllArtworks(userId) {
-    const headers = getPixivHeaders();
+// ─── PIXIV USER: Lấy danh sách artworks (cần cookie) ────────────────────────
+async function fetchUserAllArtworks(userId, baseHeaders) {
+    const headers = { ...baseHeaders };
     let allArtworks = [];
-    let offset = 0;
-    const limit = 48; // Pixiv API trả tối đa 48 artwork mỗi request
 
-    while (true) {
-        const url = `https://www.pixiv.net/ajax/user/${userId}/profile/all?lang=en`;
-        const resp = await axios.get(url, { headers });
-        const body = resp.data.body;
-        if (!body || !body.illusts) break;
-
-        const illustIds = Object.keys(body.illusts);
-        if (illustIds.length === 0) break;
-
-        // Lấy thông tin chi tiết từng artwork (cần gọi API riêng để có title, pageCount)
-        // Để tránh quá nhiều request, ta có thể lấy danh sách ID trước, rồi gọi chi tiết khi cần
-        // Nhưng để hiển thị danh sách, ta cần ít nhất title và số trang
-        // Giải pháp: gọi API `user/illusts` (không chính thức) hoặc dùng `illust/${id}` tuần tự
-        // Tuy nhiên, để đơn giản và tránh timeout, ta chỉ trả về ID và một số thông tin cơ bản
-        // Người dùng có thể chọn artwork dựa trên ID (sẽ cải thiện sau)
-        for (const id of illustIds) {
-            allArtworks.push({
-                id: id,
-                title: `Artwork ${id}`,
-                pageCount: 1 // mặc định, sẽ cập nhật sau khi chọn tải
-            });
-        }
-
-        // Pixiv user profile/all không phân trang, trả tất cả ID một lần, nên break
-        break;
+    // 1. Lấy danh sách ID từ profile/all
+    const profileUrl = `https://www.pixiv.net/ajax/user/${userId}/profile/all?lang=en`;
+    const profileResp = await axios.get(profileUrl, { headers });
+    const body = profileResp.data.body;
+    if (!body || !body.illusts) {
+        throw new Error('Không thể lấy danh sách artworks (cần cookie hợp lệ)');
     }
 
-    // Lấy thêm title và pageCount cho mỗi artwork (có thể chậm nếu nhiều)
-    // Để tối ưu, ta chỉ lấy thông tin cơ bản, hoặc lấy dần khi render
-    // Ở đây ta sẽ fetch tuần tự 10 artwork một lần để không quá tải
-    const enrichedArtworks = [];
-    for (let i = 0; i < allArtworks.length; i += 10) {
-        const batch = allArtworks.slice(i, i + 10);
-        await Promise.all(batch.map(async (art) => {
+    const illustIds = Object.keys(body.illusts);
+    if (illustIds.length === 0) return [];
+
+    // 2. Lấy thông tin chi tiết từng artwork (title, pageCount) - giới hạn 10 cái một lần
+    for (let i = 0; i < illustIds.length; i += 10) {
+        const batch = illustIds.slice(i, i + 10);
+        const details = await Promise.all(batch.map(async (id) => {
             try {
-                const detail = await axios.get(`https://www.pixiv.net/ajax/illust/${art.id}?lang=en`, { headers });
-                const data = detail.data.body;
-                art.title = data.title || art.id;
-                art.pageCount = data.pageCount || 1;
-                art.url = `https://www.pixiv.net/en/artworks/${art.id}`;
-                // Thêm thumbnail nếu cần
-                enrichedArtworks.push(art);
+                const detailResp = await axios.get(`https://www.pixiv.net/ajax/illust/${id}?lang=en`, { headers });
+                const data = detailResp.data.body;
+                return {
+                    id: id,
+                    title: data.title || id,
+                    pageCount: data.pageCount || 1,
+                    url: `https://www.pixiv.net/en/artworks/${id}`
+                };
             } catch (e) {
-                enrichedArtworks.push(art);
+                console.error(`Lỗi lấy chi tiết artwork ${id}:`, e.message);
+                return {
+                    id: id,
+                    title: `Artwork ${id}`,
+                    pageCount: 1,
+                    url: `https://www.pixiv.net/en/artworks/${id}`
+                };
             }
         }));
+        allArtworks.push(...details);
     }
 
-    return enrichedArtworks;
+    return allArtworks;
 }
 
 // ─── API ENDPOINTS ──────────────────────────────────────────────────────────
 app.get('/api/config', (req, res) => {
+    // Trả về true nếu có cookie từ env hoặc đã từng lấy được (không thể biết trước, tạm false)
     res.json({ hasCookie: !!PIXIV_PHPSESSID });
 });
 
@@ -146,6 +181,7 @@ app.get('/api/proxy', async (req, res) => {
     if (!url) return res.status(400).json({ error: 'Missing url' });
     try {
         const headers = { Referer: new URL(url).origin };
+        // Với ảnh, ta vẫn cần cookie nếu có
         if (PIXIV_PHPSESSID && (url.includes('pximg.net') || url.includes('pixiv.net'))) {
             headers.Cookie = `PHPSESSID=${PIXIV_PHPSESSID}`;
         }
@@ -213,7 +249,7 @@ app.get('/api/chapters', async (req, res) => {
     }
 });
 
-// Lấy danh sách artworks của Pixiv user
+// Lấy danh sách artworks của Pixiv user (tự động lấy cookie nếu cần)
 app.get('/api/pixiv/user', async (req, res) => {
     const { url } = req.query;
     if (!url) return res.status(400).json({ error: 'Missing url' });
@@ -221,17 +257,16 @@ app.get('/api/pixiv/user', async (req, res) => {
     if (!userMatch) return res.status(400).json({ error: 'URL không phải Pixiv user' });
     const userId = userMatch[1];
 
-    if (!PIXIV_PHPSESSID) {
-        return res.status(403).json({ error: 'Cần PHPSESSID để lấy danh sách artworks của Pixiv user' });
-    }
-
     try {
-        const artworks = await fetchUserAllArtworks(userId);
+        // Lấy headers (có thể tự động acquire cookie)
+        const headers = await getPixivHeaders(url);
+        const artworks = await fetchUserAllArtworks(userId, headers);
         res.json({
             userId,
             artworks: artworks
         });
     } catch (err) {
+        console.error('[Pixiv User] Error:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -345,26 +380,23 @@ app.get('/api/download', async (req, res) => {
                 artIds = [m[1]];
             }
 
-            if (!PIXIV_PHPSESSID) {
-                // Fallback: tải ảnh regular không cần cookie
-            }
-
-            const headers = getPixivHeaders();
+            // Lấy headers (tự động acquire cookie)
+            const headers = await getPixivHeaders(url);
             let allItems = [];
 
             for (const artId of artIds) {
                 try {
-                    // Lấy thông tin pages
-                    const api = await axios.get(`https://www.pixiv.net/ajax/illust/${artId}/pages?lang=en`, { headers });
-                    if (api.data.error) throw new Error(api.data.message);
-                    
+                    const pagesResp = await axios.get(`https://www.pixiv.net/ajax/illust/${artId}/pages?lang=en`, { headers });
+                    if (pagesResp.data.error) throw new Error(pagesResp.data.message);
+
                     const titleResp = await axios.get(`https://www.pixiv.net/ajax/illust/${artId}?lang=en`, { headers });
                     const artworkTitle = titleResp.data.body.title || artId;
                     const safeTitle = artworkTitle.replace(/[/\\:*?"<>|]/g, '_').substring(0, 50);
 
-                    const pages = api.data.body;
+                    const pages = pagesResp.data.body;
                     pages.forEach((p, i) => {
-                        const imgUrl = PIXIV_PHPSESSID ? p.urls.original : p.urls.regular;
+                        // Nếu có cookie (đã acquire) thì dùng original, không thì regular
+                        const imgUrl = (headers.Cookie) ? p.urls.original : p.urls.regular;
                         const ext = imgUrl.split('.').pop();
                         const name = `${safeTitle}/${String(i+1).padStart(3,'0')}.${ext}`;
                         allItems.push({ url: imgUrl, name });
@@ -381,9 +413,6 @@ app.get('/api/download', async (req, res) => {
             const zipName = artworks ? `Pixiv_Artworks_${artIds.length}items.zip` : `PixivArt_${artIds[0]}.zip`;
             return streamZip(res, zipName, allItems, () => headers, 2);
         }
-
-        // ---------- Pixiv User (tải nhiều artworks đã chọn) ----------
-        // Đã được xử lý chung ở trên với tham số artworks
 
         return res.status(400).json({ error: 'URL không được hỗ trợ' });
     } catch (err) {
