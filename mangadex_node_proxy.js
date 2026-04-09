@@ -1,7 +1,6 @@
 // ============================================
-// UNIFIED PROXY v2 — MangaDex + Pixiv (no nHentai)
-// npm install express cors axios archiver sharp ws
-// node server.js
+// UNIFIED PROXY — VERCEL EDITION
+// MangaDex + Pixiv (không WebSocket, tối ưu serverless)
 // ============================================
 
 const express = require('express');
@@ -11,67 +10,34 @@ const https = require('https');
 const archiver = require('archiver');
 const crypto = require('crypto');
 const sharp = require('sharp');
-const { WebSocketServer } = require('ws');
-const { EventEmitter } = require('events');
 const path = require('path');
-const fs = require('fs');
 
 const app = express();
-const port = process.env.PORT || 3000;
-
 app.use(cors());
 app.use(express.json());
-app.use(express.static('public')); // Chứa index.html
+
+// Serve static files from 'public' directory
+app.use(express.static('public'));
 
 // ─── CONFIG ─────────────────────────────────────────────────────────────────
 const PIXIV_PHPSESSID = process.env.PIXIV_PHPSESSID || null;
 const PIXIV_COMIC_UNSHUFFLE_SALT = '4wXCKprMMoxnyJ3PocJFs4CYbfnbazNe';
 const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36';
 
-const logEmitter = new EventEmitter();
-
-// ─── DNS & HELPERS ──────────────────────────────────────────────────────────
-async function dohResolve(hostname) {
-    try {
-        const r = await axios.get(`https://cloudflare-dns.com/dns-query?name=${hostname}&type=A`, {
-            headers: { accept: 'application/dns-json' },
-            timeout: 5000
-        });
-        return r.data.Answer?.[0]?.data || null;
-    } catch { return null; }
-}
-
-const dnsCache = new Map();
-async function getAgent(host) {
-    if (!host) return null;
-    if (dnsCache.has(host)) return new https.Agent({ lookup: (h, o, cb) => cb(null, dnsCache.get(host), 4) });
-    const ip = await dohResolve(host);
-    if (ip) {
-        dnsCache.set(host, ip);
-        return new https.Agent({ lookup: (h, o, cb) => cb(null, ip, 4) });
-    }
-    return null;
-}
-
+// ─── HELPERS ────────────────────────────────────────────────────────────────
 async function fetchStream(url, headers = {}) {
-    const host = new URL(url).hostname;
-    const agent = await getAgent(host);
     return axios({
         method: 'get', url,
         responseType: 'stream',
-        httpsAgent: agent,
         headers: { 'User-Agent': DEFAULT_USER_AGENT, ...headers },
-        timeout: 30000
+        timeout: 25000
     });
 }
 
 async function fetchBuffer(url, headers = {}) {
-    const host = new URL(url).hostname;
-    const agent = await getAgent(host);
     const r = await axios({
         method: 'get', url,
         responseType: 'arraybuffer',
-        httpsAgent: agent,
         headers: { 'User-Agent': DEFAULT_USER_AGENT, ...headers },
         timeout: 30000
     });
@@ -122,13 +88,8 @@ async function unshufflePixiv(buf, key, bs = 32) {
     return sharp(out, { raw: { width, height, channels } }).jpeg({ quality: 95 }).toBuffer();
 }
 
-// ─── ZIP STREAMING + LOG ────────────────────────────────────────────────────
-async function streamZip(res, filename, items, getHeaders, concurrency = 5, needBuffer = false, logId = null) {
-    const log = (msg, type = 'info') => {
-        console.log(`[${filename}] ${msg}`);
-        if (logId) logEmitter.emit('log', { id: logId, message: msg, type });
-    };
-
+// ─── ZIP STREAMING (VERCEL COMPATIBLE) ──────────────────────────────────────
+async function streamZip(res, filename, items, getHeaders, concurrency = 3, needBuffer = false) {
     res.set({
         'Content-Type': 'application/zip',
         'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`
@@ -138,41 +99,21 @@ async function streamZip(res, filename, items, getHeaders, concurrency = 5, need
     archive.on('error', err => { if (!res.headersSent) res.status(500).end(err.message); });
     archive.pipe(res);
 
-    let completed = 0;
-    const total = items.length;
-    log(`Bắt đầu tải ${total} ảnh...`);
-
     for (let i = 0; i < items.length; i += concurrency) {
         const batch = items.slice(i, i + concurrency);
-        await Promise.all(batch.map(async (item, j) => {
-            const idx = i + j;
+        await Promise.all(batch.map(async (item) => {
             const { url, key, name } = item;
             try {
-                let buf;
-                let attempts = 0;
-                while (attempts < 3) {
-                    try {
-                        buf = await fetchBuffer(url, await getHeaders(url));
-                        break;
-                    } catch (e) {
-                        attempts++;
-                        if (attempts === 3) throw e;
-                        await new Promise(r => setTimeout(r, 1000 * attempts));
-                    }
-                }
+                let buf = await fetchBuffer(url, await getHeaders(url));
                 if (key) buf = await unshufflePixiv(buf, key);
                 archive.append(buf, { name });
-                completed++;
-                log(`✓ [${completed}/${total}] ${name}`, 'success');
             } catch (e) {
-                log(`✗ Lỗi ${name}: ${e.message}`, 'error');
-                archive.append(Buffer.from(`ERROR: ${e.message}\nURL: ${url}`), { name: `_ERROR_${idx+1}.txt` });
+                archive.append(Buffer.from(`ERROR: ${e.message}\nURL: ${url}`), { name: `_ERROR_${name}` });
             }
         }));
     }
 
     await archive.finalize();
-    log(`✅ Hoàn tất ZIP: ${filename}`, 'done');
 }
 
 // ─── API ENDPOINTS ──────────────────────────────────────────────────────────
@@ -203,16 +144,12 @@ app.get('/api/download', async (req, res) => {
     const { url } = req.query;
     if (!url) return res.status(400).json({ error: 'Missing url' });
 
-    const logId = Date.now() + '-' + Math.random().toString(36);
-    const log = (msg, type) => logEmitter.emit('log', { id: logId, message: msg, type });
-
     try {
         // ---------- MangaDex ----------
         if (url.includes('mangadex.org')) {
             const m = url.match(/chapter\/([a-f0-9-]{36})/i);
             if (!m) throw new Error('Không tìm thấy Chapter ID');
             const chapterId = m[1];
-            log(`Đang lấy thông tin chapter ${chapterId}...`);
 
             const api = await axios.get(`https://api.mangadex.org/at-home/server/${chapterId}`, {
                 headers: { 'User-Agent': DEFAULT_USER_AGENT }
@@ -222,10 +159,9 @@ app.get('/api/download', async (req, res) => {
                 url: `${baseUrl}/data/${chapter.hash}/${f}`,
                 name: `${String(i+1).padStart(3,'0')}.jpg`,
             }));
-            log(`Tìm thấy ${items.length} ảnh`);
 
             const headers = () => ({ Referer: 'https://mangadex.org/' });
-            return streamZip(res, `MangaDex_${chapterId}.zip`, items, headers, 5, false, logId);
+            return streamZip(res, `MangaDex_${chapterId}.zip`, items, headers, 3, false);
         }
 
         // ---------- Pixiv Artworks ----------
@@ -233,7 +169,6 @@ app.get('/api/download', async (req, res) => {
             const m = url.match(/artworks\/(\d+)/i);
             if (!m) throw new Error('Không tìm thấy Artwork ID');
             const artId = m[1];
-            log(`Đang lấy thông tin artwork ${artId}...`);
 
             const headers = {
                 'User-Agent': DEFAULT_USER_AGENT,
@@ -250,8 +185,7 @@ app.get('/api/download', async (req, res) => {
                 return { url: imgUrl, name: `${String(i+1).padStart(3,'0')}.${ext}` };
             });
 
-            log(`Tìm thấy ${items.length} ảnh (${PIXIV_PHPSESSID ? 'original' : 'regular'})`);
-            return streamZip(res, `PixivArt_${artId}.zip`, items, () => headers, 5, false, logId);
+            return streamZip(res, `PixivArt_${artId}.zip`, items, () => headers, 3, false);
         }
 
         // ---------- Pixiv Comic ----------
@@ -259,7 +193,6 @@ app.get('/api/download', async (req, res) => {
             const m = url.match(/stories\/(\d+)/i);
             if (!m) throw new Error('Không tìm thấy Story ID');
             const storyId = m[1];
-            log(`Đang lấy thông tin comic story ${storyId}...`);
 
             let salt = 'nuxP2h3-ubK7Ol4edtPAbZVxahIXYWSJHfCsFksPORk';
             try {
@@ -271,8 +204,7 @@ app.get('/api/download', async (req, res) => {
                     const next = JSON.parse(match[1]);
                     salt = next?.props?.pageProps?.salt || salt;
                 }
-                log(`Salt: ${salt}`);
-            } catch (e) { log(`Không lấy được salt, dùng mặc định`, 'warn'); }
+            } catch (e) { /* fallback */ }
 
             const timeStr = new Date().toISOString().replace(/\.\d+/, '');
             const hash = crypto.createHash('sha256').update(timeStr + salt).digest('hex');
@@ -298,33 +230,23 @@ app.get('/api/download', async (req, res) => {
                 name: `${String(i+1).padStart(3,'0')}.jpg`
             }));
 
-            log(`Tìm thấy ${items.length} trang (có giải mã)`);
             const getImgHeaders = (imgUrl) => imgUrl.includes('pximg.net')
                 ? { Referer: 'https://comic.pixiv.net/' }
                 : comHeaders;
 
-            return streamZip(res, `${label}.zip`, items, getImgHeaders, 2, true, logId);
+            return streamZip(res, `${label}.zip`, items, getImgHeaders, 2, true);
         }
 
         return res.status(400).json({ error: 'URL không được hỗ trợ' });
     } catch (err) {
-        log(`❌ Lỗi: ${err.message}`, 'error');
         if (!res.headersSent) res.status(500).json({ error: err.message });
     }
 });
 
-// ─── WEBSOCKET ──────────────────────────────────────────────────────────────
-const server = app.listen(port, () => {
-    console.log(`\n🚀 Proxy Dashboard: http://localhost:${port}`);
-    console.log('   /api/proxy?url=    → Proxy 1 ảnh');
-    console.log('   /api/download?url= → ZIP (MangaDex / Pixiv Art / Pixiv Comic)');
+// Fallback route để trả về index.html cho SPA (nếu cần)
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-const wss = new WebSocketServer({ server });
-logEmitter.on('log', ({ id, message, type }) => {
-    wss.clients.forEach(client => {
-        if (client.readyState === 1 && client.logId === id) {
-            client.send(JSON.stringify({ message, type }));
-        }
-    });
-});
+// Không dùng app.listen vì Vercel xử lý qua module.exports
+module.exports = app;
