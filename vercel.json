@@ -8,8 +8,12 @@
   ],
   "routes": [
     {
+      "src": "/api/(.*)",
+      "dest": "/mangadex_node_proxy.js"
+    },
+    {
       "src": "/(.*)",
-      "dest": "mangadex_node_proxy.js"
+      "dest": "/public/$1"
     }
   ]
 }
