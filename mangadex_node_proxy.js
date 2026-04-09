@@ -89,7 +89,7 @@ async function unshufflePixiv(buf, key, bs = 32) {
 }
 
 // ─── ZIP STREAMING (VERCEL COMPATIBLE) ──────────────────────────────────────
-async function streamZip(res, filename, items, getHeaders, concurrency = 3, needBuffer = false) {
+async function streamZip(res, filename, items, getHeaders, concurrency = 1, needBuffer = false) {
     res.set({
         'Content-Type': 'application/zip',
         'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`
