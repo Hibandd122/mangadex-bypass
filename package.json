@@ -1,7 +1,7 @@
 {
   "name": "mangadex-proxy",
-  "version": "1.0.0",
-  "description": "Bypass SNI and DNS Cloudflare via DoH external proxy",
+  "version": "2.0.0",
+  "description": "Unified proxy downloader for MangaDex & Pixiv with WebSocket live logs",
   "main": "mangadex_node_proxy.js",
   "scripts": {
     "start": "node mangadex_node_proxy.js"
@@ -11,6 +11,10 @@
     "axios": "^1.15.0",
     "cors": "^2.8.6",
     "express": "^4.22.1",
-    "sharp": "^0.33.5"
+    "sharp": "^0.33.5",
+    "ws": "^8.18.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
