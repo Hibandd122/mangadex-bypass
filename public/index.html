@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
     <title>✦ UNIFIED PROXY · MangaDex & Pixiv</title>
+    <!-- Tailwind + Font Awesome -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
@@ -55,15 +56,16 @@
         .custom-scroll::-webkit-scrollbar-track { background: #0f172a; border-radius: 10px; }
         .custom-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
         .custom-scroll::-webkit-scrollbar-thumb:hover { background: #475569; }
-        .chapter-checkbox:checked + label {
-            background: rgba(37, 99, 235, 0.15);
-            border-color: #3b82f6;
-        }
-        .chapter-row {
+        .select-row {
             transition: background 0.1s ease;
+            cursor: pointer;
         }
-        .chapter-row:hover {
+        .select-row:hover {
             background: rgba(255, 255, 255, 0.03);
+        }
+        .select-row.selected {
+            background: rgba(37, 99, 235, 0.15);
+            border-left: 3px solid #3b82f6;
         }
         .badge-lang {
             background: #1e293b;
@@ -87,7 +89,7 @@
                 </h1>
                 <p class="text-xs md:text-sm text-slate-400 flex items-center gap-1.5 mt-0.5">
                     <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]"></span> 
-                    MangaDex · Pixiv Art
+                    MangaDex · Pixiv Art · Pixiv User
                 </p>
             </div>
         </div>
@@ -97,19 +99,19 @@
             <!-- URL Input -->
             <div class="mb-5">
                 <label class="text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
-                    <i class="fas fa-link text-cyan-400 text-xs"></i> URL truyện / chapter / artwork
+                    <i class="fas fa-link text-cyan-400 text-xs"></i> URL truyện / chapter / tác giả
                 </label>
                 <div class="relative">
                     <i class="fas fa-paste absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 text-sm"></i>
-                    <input type="text" id="urlInput" placeholder="https://mangadex.org/title/... hoặc pixiv.net/artworks/..." 
+                    <input type="text" id="urlInput" placeholder="https://mangadex.org/title/... hoặc pixiv.net/users/..." 
                            class="w-full bg-slate-900/70 border border-slate-700 rounded-xl py-3.5 pl-11 pr-4 text-slate-100 placeholder:text-slate-500 focus:outline-none input-glow transition-all">
                 </div>
             </div>
 
             <!-- Buttons chính -->
             <div class="flex flex-wrap gap-3 mb-3">
-                <button id="fetchChaptersBtn" class="btn-secondary flex-1 md:flex-none px-6 py-3 rounded-xl text-white font-medium text-sm md:text-base flex items-center justify-center gap-2 shadow-lg">
-                    <i class="fas fa-list-ul"></i> Lấy danh sách chapter
+                <button id="fetchListBtn" class="btn-secondary flex-1 md:flex-none px-6 py-3 rounded-xl text-white font-medium text-sm md:text-base flex items-center justify-center gap-2 shadow-lg">
+                    <i class="fas fa-list-ul"></i> <span id="fetchBtnText">Lấy danh sách</span>
                 </button>
                 <button id="downloadBtn" class="btn-primary flex-1 md:flex-none px-6 py-3 rounded-xl text-white font-semibold text-sm md:text-base flex items-center justify-center gap-2 shadow-xl">
                     <i class="fas fa-download"></i> Tải ZIP
@@ -124,31 +126,31 @@
                 </div>
             </div>
             <p class="text-[10px] text-slate-500 flex items-center gap-1">
-                <i class="fas fa-info-circle"></i> Với MangaDex title: bấm "Lấy danh sách chapter" trước, chọn chapter rồi tải.
+                <i class="fas fa-info-circle"></i> MangaDex title / Pixiv user: bấm "Lấy danh sách", chọn mục cần tải, rồi Tải ZIP.
             </p>
         </div>
 
-        <!-- Khu vực danh sách chapter (ẩn/hiện) -->
-        <div id="chapterPanel" class="glass-card rounded-2xl p-5 md:p-6 mb-5 hidden">
+        <!-- Khu vực danh sách (chapter / artworks) -->
+        <div id="listPanel" class="glass-card rounded-2xl p-5 md:p-6 mb-5 hidden">
             <div class="flex items-center justify-between mb-3">
                 <h3 class="font-semibold text-slate-200 flex items-center gap-2">
                     <i class="fas fa-book-open text-cyan-400"></i> 
-                    <span id="mangaTitleDisplay">Danh sách chapter</span>
+                    <span id="listTitleDisplay">Danh sách</span>
                 </h3>
                 <div class="flex gap-2">
-                    <button id="selectAllChapters" class="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg transition">
+                    <button id="selectAllBtn" class="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg transition">
                         <i class="far fa-check-square mr-1"></i>Chọn tất cả
                     </button>
-                    <button id="deselectAllChapters" class="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg transition">
+                    <button id="deselectAllBtn" class="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg transition">
                         <i class="far fa-square mr-1"></i>Bỏ chọn
                     </button>
                 </div>
             </div>
-            <div id="chapterListContainer" class="bg-black/30 rounded-xl p-2 border border-slate-700/50 max-h-80 overflow-y-auto custom-scroll">
-                <div class="text-center text-slate-400 py-6">Chưa có dữ liệu. Nhập URL title và bấm "Lấy danh sách chapter".</div>
+            <div id="listContainer" class="bg-black/30 rounded-xl p-2 border border-slate-700/50 max-h-80 overflow-y-auto custom-scroll">
+                <div class="text-center text-slate-400 py-6">Chưa có dữ liệu. Nhập URL và bấm "Lấy danh sách".</div>
             </div>
             <p class="text-xs text-slate-500 mt-2 flex items-center gap-1">
-                <i class="fas fa-mouse"></i> Click vào hàng để chọn/bỏ chọn. Số chapter được chọn: <span id="selectedCount">0</span>
+                <i class="fas fa-mouse"></i> Click vào hàng để chọn/bỏ chọn. Đã chọn: <span id="selectedCount">0</span>
             </p>
         </div>
 
@@ -171,29 +173,30 @@
             </div>
         </div>
         <p class="text-center text-[11px] text-slate-500 mt-4 opacity-70">
-            <i class="far fa-copyright mr-1"></i>Proxy hoạt động serverless · Hỗ trợ chọn chapter MangaDex
+            <i class="far fa-copyright mr-1"></i>Proxy serverless · MangaDex & Pixiv (cần cookie cho Pixiv đầy đủ)
         </p>
     </div>
 
     <script>
         (function(){
             const urlInput = document.getElementById('urlInput');
-            const fetchChaptersBtn = document.getElementById('fetchChaptersBtn');
+            const fetchListBtn = document.getElementById('fetchListBtn');
+            const fetchBtnText = document.getElementById('fetchBtnText');
             const downloadBtn = document.getElementById('downloadBtn');
             const proxyBtn = document.getElementById('proxyBtn');
             const logContainer = document.getElementById('logContainer');
             const clearLogsBtn = document.getElementById('clearLogsBtn');
             const cookieBadge = document.getElementById('cookieBadge');
-            const chapterPanel = document.getElementById('chapterPanel');
-            const mangaTitleDisplay = document.getElementById('mangaTitleDisplay');
-            const chapterListContainer = document.getElementById('chapterListContainer');
-            const selectAllBtn = document.getElementById('selectAllChapters');
-            const deselectAllBtn = document.getElementById('deselectAllChapters');
+            const listPanel = document.getElementById('listPanel');
+            const listTitleDisplay = document.getElementById('listTitleDisplay');
+            const listContainer = document.getElementById('listContainer');
+            const selectAllBtn = document.getElementById('selectAllBtn');
+            const deselectAllBtn = document.getElementById('deselectAllBtn');
             const selectedCountSpan = document.getElementById('selectedCount');
 
-            let chaptersData = []; // lưu danh sách chapter { id, chapter, title, volume, translatedLanguage, pages, group }
-            let currentMangaId = null;
-            let currentMangaTitle = '';
+            let currentListType = null; // 'manga' hoặc 'pixiv'
+            let currentListData = [];     // Mảng các item (có id, title, ...)
+            let selectedItems = new Set(); // Lưu id đã chọn
 
             // Kiểm tra cookie Pixiv
             fetch('/api/config')
@@ -228,113 +231,142 @@
                 logContainer.innerHTML = '<div class="text-slate-400 flex items-center gap-2"><i class="fas fa-circle-notch text-cyan-400 text-xs"></i> Đã xóa nhật ký.</div>';
             });
 
-            // Render danh sách chapter
-            function renderChapterList(chapters) {
-                if (!chapters.length) {
-                    chapterListContainer.innerHTML = '<div class="text-center text-slate-400 py-6">Không có chapter nào.</div>';
+            // Cập nhật giao diện danh sách
+            function renderList(items, type) {
+                selectedItems.clear();
+                if (!items || items.length === 0) {
+                    listContainer.innerHTML = '<div class="text-center text-slate-400 py-6">Không có mục nào.</div>';
                     selectedCountSpan.textContent = '0';
                     return;
                 }
+
                 let html = '<div class="space-y-1">';
-                chapters.forEach((chap, index) => {
-                    const chapNum = chap.chapter || 'Oneshot';
-                    const title = chap.title ? ` - ${chap.title}` : '';
-                    const volume = chap.volume ? `Vol. ${chap.volume} ` : '';
-                    const pages = chap.pages > 0 ? `${chap.pages} trang` : '? trang';
-                    const group = chap.group || 'Unknown';
-                    const lang = chap.translatedLanguage || '??';
+                items.forEach((item, index) => {
+                    const isManga = (type === 'manga');
+                    const id = item.id;
+                    let title = '';
+                    let subtitle = '';
+                    let meta = '';
+                    
+                    if (isManga) {
+                        const chapNum = item.chapter || 'Oneshot';
+                        title = `Chap ${chapNum}`;
+                        if (item.title) title += ` - ${item.title}`;
+                        subtitle = `${item.volume ? 'Vol. '+item.volume : ''}`;
+                        meta = `<span class="badge-lang"><i class="fas fa-globe mr-1"></i>${item.translatedLanguage || '??'}</span>
+                                <span class="text-xs text-slate-400"><i class="far fa-images mr-1"></i>${item.pages || '?'} trang</span>
+                                <span class="text-xs text-slate-500"><i class="fas fa-users mr-1"></i>${item.group || 'Unknown'}</span>`;
+                    } else {
+                        // Pixiv artwork
+                        title = item.title || `Artwork ${id}`;
+                        subtitle = `ID: ${id}`;
+                        meta = `<span class="text-xs text-slate-400"><i class="far fa-images mr-1"></i>${item.pageCount || 1} trang</span>
+                                <a href="${item.url || '#'}" target="_blank" class="text-xs text-cyan-400 hover:underline"><i class="fas fa-external-link-alt ml-2"></i></a>`;
+                    }
+
                     html += `
-                        <div class="chapter-row flex items-center gap-2 p-2 rounded-lg border border-transparent hover:border-slate-700/50 cursor-pointer" data-chapter-id="${chap.id}">
-                            <input type="checkbox" id="ch_${index}" class="chapter-checkbox hidden" value="${chap.id}">
-                            <label for="ch_${index}" class="flex-1 flex items-center gap-3 cursor-pointer">
-                                <div class="w-5 h-5 rounded border-2 border-slate-500 flex items-center justify-center text-[10px] text-white bg-slate-800">
-                                    <i class="fas fa-check hidden"></i>
+                        <div class="select-row flex items-center gap-3 p-3 rounded-lg border border-transparent" data-id="${id}">
+                            <div class="w-5 h-5 rounded border-2 transition-all flex items-center justify-center text-[10px] text-white bg-slate-800 border-slate-500">
+                                <i class="fas fa-check hidden"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <span class="font-medium text-slate-200">${title}</span>
+                                    ${meta}
                                 </div>
-                                <div class="flex-1 min-w-0">
-                                    <div class="flex items-center gap-2 flex-wrap">
-                                        <span class="font-medium text-slate-200">Chap ${chapNum}</span>
-                                        <span class="badge-lang"><i class="fas fa-globe mr-1"></i>${lang}</span>
-                                        <span class="text-xs text-slate-400"><i class="far fa-images mr-1"></i>${pages}</span>
-                                        <span class="text-xs text-slate-500"><i class="fas fa-users mr-1"></i>${group}</span>
-                                    </div>
-                                    <div class="text-xs text-slate-400 truncate">${volume}${title}</div>
-                                </div>
-                            </label>
+                                <div class="text-xs text-slate-400 truncate">${subtitle}</div>
+                            </div>
                         </div>
                     `;
                 });
                 html += '</div>';
-                chapterListContainer.innerHTML = html;
+                listContainer.innerHTML = html;
 
-                // Gắn sự kiện click cho mỗi hàng
-                document.querySelectorAll('.chapter-row').forEach(row => {
-                    const checkbox = row.querySelector('input[type="checkbox"]');
+                // Gắn sự kiện click cho từng hàng
+                document.querySelectorAll('.select-row').forEach(row => {
+                    const id = row.dataset.id;
                     const checkIcon = row.querySelector('.fa-check');
+                    const checkDiv = row.querySelector('.w-5.h-5');
+                    
                     row.addEventListener('click', (e) => {
-                        if (e.target.tagName !== 'INPUT') {
-                            checkbox.checked = !checkbox.checked;
+                        // Không kích hoạt nếu click vào link
+                        if (e.target.closest('a')) return;
+                        
+                        if (selectedItems.has(id)) {
+                            selectedItems.delete(id);
+                            row.classList.remove('selected', 'border-blue-500/30');
+                            checkIcon.classList.add('hidden');
+                            checkDiv.classList.remove('bg-blue-600', 'border-blue-600');
+                            checkDiv.classList.add('bg-slate-800', 'border-slate-500');
+                        } else {
+                            selectedItems.add(id);
+                            row.classList.add('selected', 'border-blue-500/30');
+                            checkIcon.classList.remove('hidden');
+                            checkDiv.classList.add('bg-blue-600', 'border-blue-600');
+                            checkDiv.classList.remove('bg-slate-800', 'border-slate-500');
                         }
-                        checkIcon.classList.toggle('hidden', !checkbox.checked);
-                        row.classList.toggle('bg-blue-900/20', checkbox.checked);
-                        row.classList.toggle('border-blue-500/30', checkbox.checked);
                         updateSelectedCount();
                     });
-                    // Khởi tạo trạng thái
-                    if (checkbox.checked) {
-                        checkIcon.classList.remove('hidden');
-                        row.classList.add('bg-blue-900/20', 'border-blue-500/30');
-                    }
                 });
+
                 updateSelectedCount();
             }
 
             function updateSelectedCount() {
-                const checked = document.querySelectorAll('.chapter-checkbox:checked');
-                selectedCountSpan.textContent = checked.length;
+                selectedCountSpan.textContent = selectedItems.size;
             }
 
-            function getSelectedChapterIds() {
-                const checked = document.querySelectorAll('.chapter-checkbox:checked');
-                return Array.from(checked).map(cb => cb.value);
-            }
-
-            // Fetch danh sách chapter
-            async function fetchChapters() {
+            // Xác định loại URL và lấy danh sách tương ứng
+            async function fetchList() {
                 const url = urlInput.value.trim();
                 if (!url) {
-                    addLog('Vui lòng nhập URL MangaDex title.', 'warn');
-                    return;
-                }
-                if (!url.includes('/title/')) {
-                    addLog('URL không phải MangaDex title. Chỉ hỗ trợ lấy chapter cho title.', 'warn');
+                    addLog('Vui lòng nhập URL.', 'warn');
                     return;
                 }
 
-                addLog(`🔍 Đang lấy danh sách chapter từ: ${url}`, 'progress');
-                fetchChaptersBtn.disabled = true;
-                fetchChaptersBtn.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Đang tải...';
+                let apiUrl = '';
+                let type = '';
+                if (url.includes('mangadex.org/title/')) {
+                    apiUrl = `/api/chapters?url=${encodeURIComponent(url)}`;
+                    type = 'manga';
+                } else if (url.includes('pixiv.net') && url.includes('/users/')) {
+                    apiUrl = `/api/pixiv/user?url=${encodeURIComponent(url)}`;
+                    type = 'pixiv';
+                } else {
+                    addLog('URL không phải MangaDex title hoặc Pixiv user. Không cần lấy danh sách.', 'warn');
+                    return;
+                }
+
+                addLog(`🔍 Đang lấy danh sách từ: ${url}`, 'progress');
+                fetchListBtn.disabled = true;
+                fetchBtnText.textContent = 'Đang tải...';
 
                 try {
-                    const response = await fetch(`/api/chapters?url=${encodeURIComponent(url)}`);
+                    const response = await fetch(apiUrl);
                     if (!response.ok) {
                         const err = await response.json();
                         throw new Error(err.error || 'Lỗi server');
                     }
                     const data = await response.json();
-                    chaptersData = data.chapters;
-                    currentMangaId = data.mangaId;
-                    currentMangaTitle = data.mangaTitle;
-                    mangaTitleDisplay.textContent = `${data.mangaTitle} (${chaptersData.length} chapter)`;
                     
-                    renderChapterList(chaptersData);
-                    chapterPanel.classList.remove('hidden');
-                    addLog(`✅ Đã tải ${chaptersData.length} chapter. Chọn chapter cần tải.`, 'success');
+                    if (type === 'manga') {
+                        currentListData = data.chapters;
+                        listTitleDisplay.textContent = `${data.mangaTitle} (${currentListData.length} chapter)`;
+                    } else {
+                        currentListData = data.artworks;
+                        listTitleDisplay.textContent = `Pixiv User ${data.userId} (${currentListData.length} artworks)`;
+                    }
+                    
+                    currentListType = type;
+                    renderList(currentListData, type);
+                    listPanel.classList.remove('hidden');
+                    addLog(`✅ Đã tải ${currentListData.length} mục. Chọn mục cần tải.`, 'success');
                 } catch (error) {
                     addLog(`❌ Lỗi: ${error.message}`, 'error');
-                    chapterPanel.classList.add('hidden');
+                    listPanel.classList.add('hidden');
                 } finally {
-                    fetchChaptersBtn.disabled = false;
-                    fetchChaptersBtn.innerHTML = '<i class="fas fa-list-ul"></i> Lấy danh sách chapter';
+                    fetchListBtn.disabled = false;
+                    fetchBtnText.textContent = 'Lấy danh sách';
                 }
             }
 
@@ -347,16 +379,22 @@
                 }
 
                 let downloadUrl = `/api/download?url=${encodeURIComponent(url)}`;
-                
-                // Nếu là MangaDex title và có chapter được chọn -> thêm chapters param
-                if (url.includes('/title/') && chaptersData.length > 0) {
-                    const selectedIds = getSelectedChapterIds();
-                    if (selectedIds.length === 0) {
-                        addLog('⚠️ Bạn chưa chọn chapter nào. Sẽ tải TẤT CẢ chapter (có thể rất lâu).', 'warn');
-                        // Vẫn cho tải tất cả (không thêm chapters param)
-                    } else {
+                let selectedIds = [];
+
+                // Nếu đang có panel danh sách và có mục được chọn
+                if (listPanel && !listPanel.classList.contains('hidden') && selectedItems.size > 0) {
+                    selectedIds = Array.from(selectedItems);
+                    if (currentListType === 'manga') {
                         downloadUrl += `&chapters=${selectedIds.join(',')}`;
                         addLog(`📌 Sẽ tải ${selectedIds.length} chapter đã chọn.`, 'info');
+                    } else if (currentListType === 'pixiv') {
+                        downloadUrl += `&artworks=${selectedIds.join(',')}`;
+                        addLog(`📌 Sẽ tải ${selectedIds.length} artworks đã chọn.`, 'info');
+                    }
+                } else {
+                    // Nếu là URL title hoặc user mà không chọn gì -> cảnh báo
+                    if (url.includes('mangadex.org/title/') || (url.includes('pixiv.net') && url.includes('/users/'))) {
+                        addLog('⚠️ Bạn chưa chọn mục nào. Sẽ tải TẤT CẢ (có thể rất lâu).', 'warn');
                     }
                 }
 
@@ -367,7 +405,7 @@
 
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 180000); // 3 phút
+                    const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 phút
                     
                     const response = await fetch(downloadUrl, { signal: controller.signal });
                     clearTimeout(timeoutId);
@@ -401,7 +439,7 @@
                     addLog(`✅ Tải thành công: ${filename}`, 'success');
                 } catch (error) {
                     if (error.name === 'AbortError') {
-                        addLog('❌ Hết thời gian chờ (180s). Có thể do quá nhiều ảnh.', 'error');
+                        addLog('❌ Hết thời gian chờ (5 phút). Có thể do quá nhiều ảnh.', 'error');
                     } else {
                         addLog(`❌ Lỗi: ${error.message}`, 'error');
                     }
@@ -427,34 +465,46 @@
                 }
             }
 
+            // Chọn tất cả
+            function selectAll() {
+                document.querySelectorAll('.select-row').forEach(row => {
+                    const id = row.dataset.id;
+                    if (!selectedItems.has(id)) {
+                        selectedItems.add(id);
+                        row.classList.add('selected', 'border-blue-500/30');
+                        const checkIcon = row.querySelector('.fa-check');
+                        const checkDiv = row.querySelector('.w-5.h-5');
+                        checkIcon.classList.remove('hidden');
+                        checkDiv.classList.add('bg-blue-600', 'border-blue-600');
+                        checkDiv.classList.remove('bg-slate-800', 'border-slate-500');
+                    }
+                });
+                updateSelectedCount();
+            }
+
+            function deselectAll() {
+                selectedItems.clear();
+                document.querySelectorAll('.select-row').forEach(row => {
+                    row.classList.remove('selected', 'border-blue-500/30');
+                    const checkIcon = row.querySelector('.fa-check');
+                    const checkDiv = row.querySelector('.w-5.h-5');
+                    checkIcon.classList.add('hidden');
+                    checkDiv.classList.add('bg-slate-800', 'border-slate-500');
+                    checkDiv.classList.remove('bg-blue-600', 'border-blue-600');
+                });
+                updateSelectedCount();
+            }
+
             // Event listeners
-            fetchChaptersBtn.addEventListener('click', fetchChapters);
+            fetchListBtn.addEventListener('click', fetchList);
             downloadBtn.addEventListener('click', handleDownload);
             proxyBtn.addEventListener('click', handleProxy);
+            selectAllBtn.addEventListener('click', selectAll);
+            deselectAllBtn.addEventListener('click', deselectAll);
             urlInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleDownload(); });
 
-            selectAllBtn.addEventListener('click', () => {
-                document.querySelectorAll('.chapter-checkbox').forEach(cb => {
-                    cb.checked = true;
-                    const row = cb.closest('.chapter-row');
-                    row.classList.add('bg-blue-900/20', 'border-blue-500/30');
-                    row.querySelector('.fa-check').classList.remove('hidden');
-                });
-                updateSelectedCount();
-            });
-
-            deselectAllBtn.addEventListener('click', () => {
-                document.querySelectorAll('.chapter-checkbox').forEach(cb => {
-                    cb.checked = false;
-                    const row = cb.closest('.chapter-row');
-                    row.classList.remove('bg-blue-900/20', 'border-blue-500/30');
-                    row.querySelector('.fa-check').classList.add('hidden');
-                });
-                updateSelectedCount();
-            });
-
             // Khởi tạo
-            addLog('✨ Sẵn sàng. Hỗ trợ MangaDex title (chọn chapter), chapter đơn, Pixiv artworks.', 'info');
+            addLog('✨ Sẵn sàng. Hỗ trợ MangaDex title (chọn chapter), Pixiv user (chọn artworks).', 'info');
         })();
     </script>
 </body>
