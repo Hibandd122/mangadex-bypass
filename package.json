@@ -1,0 +1,14 @@
+{
+  "name": "mangadex-proxy",
+  "version": "1.0.0",
+  "description": "Bypass SNI and DNS Cloudflare via DoH external proxy",
+  "main": "mangadex_node_proxy.js",
+  "scripts": {
+    "start": "node mangadex_node_proxy.js"
+  },
+  "dependencies": {
+    "axios": "^1.15.0",
+    "cors": "^2.8.6",
+    "express": "^4.22.1"
+  }
+}
