@@ -15,11 +15,5 @@
       "src": "/(.*)",
       "dest": "/public/$1"
     }
-  ],
-  "functions": {
-    "mangadex_node_proxy.js": {
-      "maxDuration": 60,
-      "memory": 3008
-    }
-  }
+  ]
 }
