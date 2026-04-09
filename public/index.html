@@ -2,125 +2,307 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>📦 Unified Proxy Downloader</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <title>✦ UNIFIED PROXY · MangaDex & Pixiv</title>
+    <!-- Tailwind + Font Awesome -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
-        .log-container::-webkit-scrollbar { width: 6px; }
-        .log-container::-webkit-scrollbar-thumb { background: #4B5563; border-radius: 3px; }
-        .animate-spin { animation: spin 1s linear infinite; }
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        * { font-family: 'Inter', sans-serif; }
+        body {
+            background: radial-gradient(circle at 20% 30%, #0f172a, #020617);
+            min-height: 100vh;
+        }
+        .glass-card {
+            background: rgba(15, 23, 42, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(56, 189, 248, 0.15);
+            box-shadow: 0 20px 40px -10px rgba(0,0,0,0.6), 0 0 0 1px rgba(56,189,248,0.1) inset;
+        }
+        .input-glow:focus {
+            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.3), 0 0 20px -5px #38bdf8;
+            border-color: #38bdf8;
+        }
+        .btn-primary {
+            background: linear-gradient(145deg, #2563eb, #1d4ed8);
+            border: 1px solid rgba(96, 165, 250, 0.3);
+            box-shadow: 0 8px 20px -8px #1e3a8a, 0 0 0 1px rgba(59,130,246,0.2) inset;
+            transition: all 0.15s ease;
+        }
+        .btn-primary:hover {
+            background: linear-gradient(145deg, #3b82f6, #2563eb);
+            box-shadow: 0 10px 25px -5px #2563eb, 0 0 0 1px #60a5fa inset;
+            transform: scale(1.01);
+        }
+        .log-entry {
+            border-left: 3px solid #38bdf8;
+            padding-left: 12px;
+            margin-bottom: 6px;
+            animation: fadeIn 0.2s ease;
+        }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+        .custom-scroll::-webkit-scrollbar { width: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: #0f172a; border-radius: 10px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        .custom-scroll::-webkit-scrollbar-thumb:hover { background: #475569; }
+        select {
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2338bdf8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+            background-position: right 0.75rem center;
+            background-repeat: no-repeat;
+            background-size: 1.5em 1.5em;
+            appearance: none;
+        }
     </style>
 </head>
-<body class="bg-gray-900 text-gray-100 font-sans antialiased">
-    <div class="max-w-4xl mx-auto px-4 py-8">
-        <div class="flex items-center gap-3 mb-8">
-            <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center text-xl">📦</div>
-            <h1 class="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                Unified Proxy Downloader
-            </h1>
+<body class="text-slate-200 p-4 md:p-6 flex items-center justify-center">
+    <div class="w-full max-w-4xl mx-auto">
+        <!-- Header -->
+        <div class="flex items-center gap-3 mb-6 md:mb-8">
+            <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center text-2xl shadow-lg shadow-blue-500/30">
+                <i class="fas fa-cloud-download-alt text-white"></i>
+            </div>
+            <div>
+                <h1 class="text-2xl md:text-3xl font-bold bg-gradient-to-r from-cyan-200 via-blue-200 to-indigo-200 bg-clip-text text-transparent tracking-tight">
+                    Unified Proxy
+                </h1>
+                <p class="text-xs md:text-sm text-slate-400 flex items-center gap-1.5 mt-0.5">
+                    <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]"></span> 
+                    MangaDex · Pixiv Art · Pixiv Comic
+                </p>
+            </div>
         </div>
 
-        <div class="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-2xl p-6 shadow-xl mb-6">
-            <label class="block text-sm font-medium text-gray-300 mb-2">🔗 Dán URL truyện / chapter</label>
-            <div class="flex flex-col sm:flex-row gap-3">
-                <input type="text" id="urlInput" placeholder="https://mangadex.org/chapter/... hoặc pixiv..."
-                    class="flex-1 bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
-                <button id="downloadBtn" class="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium px-6 py-3 rounded-xl shadow-lg shadow-blue-900/20 transition flex items-center justify-center gap-2">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                    Tải ZIP
-                </button>
+        <!-- Card chính -->
+        <div class="glass-card rounded-2xl md:rounded-3xl p-5 md:p-7 mb-5 transition-all">
+            <!-- URL Input -->
+            <div class="mb-5">
+                <label class="text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
+                    <i class="fas fa-link text-cyan-400 text-xs"></i> URL truyện hoặc chapter
+                </label>
+                <div class="relative">
+                    <i class="fas fa-paste absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 text-sm"></i>
+                    <input type="text" id="urlInput" placeholder="https://mangadex.org/title/... hoặc pixiv..." 
+                           class="w-full bg-slate-900/70 border border-slate-700 rounded-xl py-3.5 pl-11 pr-4 text-slate-100 placeholder:text-slate-500 focus:outline-none input-glow transition-all">
+                </div>
             </div>
-            <p class="text-xs text-gray-500 mt-2 flex items-center gap-2">
-                <span class="inline-block w-2 h-2 rounded-full bg-green-500"></span> Hỗ trợ: MangaDex, Pixiv Art, Pixiv Comic
-                <span id="cookieWarning" class="text-yellow-400 ml-2 hidden">⚠️ Pixiv không có cookie, tải ảnh regular</span>
+
+            <!-- Tùy chọn nâng cao (chỉ dùng cho MangaDex Title) -->
+            <div class="grid grid-cols-2 gap-3 mb-5">
+                <div>
+                    <label class="text-xs font-medium text-slate-400 mb-1.5 flex items-center gap-1.5">
+                        <i class="fas fa-language text-cyan-400/70"></i> Ngôn ngữ
+                    </label>
+                    <select id="langSelect" class="w-full bg-slate-900/70 border border-slate-700 rounded-xl py-2.5 px-4 text-slate-200 text-sm focus:outline-none focus:border-cyan-400/50 transition">
+                        <option value="en">🇬🇧 English (en)</option>
+                        <option value="vi">🇻🇳 Tiếng Việt (vi)</option>
+                        <option value="ja">🇯🇵 日本語 (ja)</option>
+                        <option value="zh">🇨🇳 中文 (zh)</option>
+                        <option value="ko">🇰🇷 한국어 (ko)</option>
+                        <option value="fr">🇫🇷 Français (fr)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-slate-400 mb-1.5 flex items-center gap-1.5">
+                        <i class="fas fa-list-ol text-cyan-400/70"></i> Giới hạn chapter <span class="text-slate-500">(0 = tất cả)</span>
+                    </label>
+                    <input type="number" id="limitInput" min="0" value="0" 
+                           class="w-full bg-slate-900/70 border border-slate-700 rounded-xl py-2.5 px-4 text-slate-200 text-sm focus:outline-none focus:border-cyan-400/50 transition">
+                </div>
+            </div>
+
+            <!-- Buttons -->
+            <div class="flex flex-wrap gap-3">
+                <button id="downloadBtn" class="btn-primary flex-1 md:flex-none px-6 py-3 rounded-xl text-white font-semibold text-sm md:text-base flex items-center justify-center gap-2 shadow-xl">
+                    <i class="fas fa-download"></i> Tải ZIP
+                </button>
+                <button id="proxyBtn" class="bg-slate-800/70 hover:bg-slate-700 border border-slate-600/50 px-5 py-3 rounded-xl text-slate-200 font-medium text-sm flex items-center gap-2 transition shadow-lg">
+                    <i class="fas fa-image"></i> Mở ảnh proxy
+                </button>
+                <div class="ml-auto text-xs text-slate-400 flex items-center gap-1">
+                    <span id="cookieBadge" class="bg-yellow-500/10 text-yellow-200 border border-yellow-500/30 rounded-full px-2.5 py-0.5 hidden">
+                        <i class="fas fa-exclamation-triangle mr-1"></i>Thiếu cookie Pixiv
+                    </span>
+                </div>
+            </div>
+            <p class="text-[10px] text-slate-500 mt-3 flex items-center gap-1">
+                <i class="fas fa-info-circle"></i> Đối với MangaDex title, bạn có thể chọn ngôn ngữ và giới hạn số chapter.
             </p>
         </div>
 
-        <div class="bg-gray-800/30 rounded-2xl border border-gray-700 p-6 shadow-inner">
+        <!-- Log Panel -->
+        <div class="glass-card rounded-2xl p-5 md:p-6">
             <div class="flex items-center justify-between mb-3">
-                <h2 class="text-lg font-semibold flex items-center gap-2"><span class="w-2 h-2 bg-green-500 rounded-full"></span> Trạng thái</h2>
-                <button id="clearLogs" class="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg transition">Clear</button>
+                <h3 class="font-semibold text-slate-200 flex items-center gap-2">
+                    <span class="relative flex h-3 w-3">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-60"></span>
+                        <span class="relative inline-flex rounded-full h-3 w-3 bg-cyan-400"></span>
+                    </span>
+                    Nhật ký hoạt động
+                </h3>
+                <button id="clearLogsBtn" class="text-slate-400 hover:text-slate-200 text-sm transition">
+                    <i class="far fa-trash-alt mr-1"></i>Clear
+                </button>
             </div>
-            <div id="logContainer" class="log-container bg-black/30 rounded-xl p-4 h-48 overflow-y-auto font-mono text-sm border border-gray-800">
-                <div class="text-gray-500">✨ Sẵn sàng. Nhập URL và nhấn Tải.</div>
+            <div id="logContainer" class="bg-black/30 rounded-xl p-4 h-56 md:h-64 overflow-y-auto custom-scroll text-sm border border-slate-700/50">
+                <div class="text-slate-400 flex items-center gap-2"><i class="fas fa-circle-notch text-cyan-400 text-xs"></i> Sẵn sàng. Dán URL và chọn tùy chọn.</div>
             </div>
         </div>
+        <p class="text-center text-[11px] text-slate-500 mt-4 opacity-70">
+            <i class="far fa-copyright mr-1"></i>Proxy hoạt động serverless · Hỗ trợ unshuffle Pixiv Comic
+        </p>
     </div>
 
     <script>
-        const urlInput = document.getElementById('urlInput');
-        const downloadBtn = document.getElementById('downloadBtn');
-        const logContainer = document.getElementById('logContainer');
-        const clearBtn = document.getElementById('clearLogs');
-        const cookieWarning = document.getElementById('cookieWarning');
+        (function(){
+            const urlInput = document.getElementById('urlInput');
+            const downloadBtn = document.getElementById('downloadBtn');
+            const proxyBtn = document.getElementById('proxyBtn');
+            const logContainer = document.getElementById('logContainer');
+            const clearBtn = document.getElementById('clearLogsBtn');
+            const langSelect = document.getElementById('langSelect');
+            const limitInput = document.getElementById('limitInput');
+            const cookieBadge = document.getElementById('cookieBadge');
 
-        fetch('/api/config')
-            .then(r => r.json())
-            .then(cfg => { if (!cfg.hasCookie) cookieWarning.classList.remove('hidden'); })
-            .catch(() => {});
+            // Kiểm tra cookie Pixiv
+            fetch('/api/config')
+                .then(r => r.json())
+                .then(cfg => { if (!cfg.hasCookie) cookieBadge.classList.remove('hidden'); })
+                .catch(() => {});
 
-        function addLog(message, type = 'info') {
-            const div = document.createElement('div');
-            const colors = {
-                info: 'text-gray-300',
-                success: 'text-green-400',
-                error: 'text-red-400',
-                warn: 'text-yellow-400',
-                done: 'text-blue-400 font-bold'
-            };
-            div.className = `${colors[type] || 'text-gray-300'} py-0.5 border-b border-gray-800/50 last:border-0`;
-            div.textContent = message;
-            logContainer.appendChild(div);
-            logContainer.scrollTop = logContainer.scrollHeight;
-            if (logContainer.children.length > 50) logContainer.removeChild(logContainer.firstChild);
-        }
-
-        async function startDownload() {
-            const url = urlInput.value.trim();
-            if (!url) return addLog('❌ Vui lòng nhập URL', 'error');
-
-            addLog(`🔍 Đang xử lý: ${url}`, 'info');
-            downloadBtn.disabled = true;
-            downloadBtn.innerHTML = '<div class="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Đang tải...';
-            addLog('⏳ Đang chuẩn bị ZIP, vui lòng đợi...', 'warn');
-
-            try {
-                const response = await fetch(`/api/download?url=${encodeURIComponent(url)}`);
-                if (!response.ok) {
-                    const err = await response.json();
-                    throw new Error(err.error || 'Lỗi server');
-                }
-
-                const blob = await response.blob();
-                const contentDisposition = response.headers.get('Content-Disposition');
-                let filename = 'download.zip';
-                if (contentDisposition) {
-                    const match = contentDisposition.match(/filename\*=UTF-8''(.+)/);
-                    if (match) filename = decodeURIComponent(match[1]);
-                }
-
-                const downloadUrl = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = downloadUrl;
-                a.download = filename;
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                window.URL.revokeObjectURL(downloadUrl);
-
-                addLog(`🎉 Tải thành công: ${filename}`, 'done');
-            } catch (error) {
-                addLog(`❌ Lỗi: ${error.message}`, 'error');
-            } finally {
-                downloadBtn.disabled = false;
-                downloadBtn.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg> Tải ZIP';
+            // Hàm thêm log
+            function addLog(message, type = 'info') {
+                const entry = document.createElement('div');
+                entry.className = 'log-entry text-sm';
+                const iconMap = {
+                    info: '<i class="fas fa-circle-info text-cyan-400 w-4"></i>',
+                    success: '<i class="fas fa-check-circle text-emerald-400 w-4"></i>',
+                    error: '<i class="fas fa-times-circle text-rose-400 w-4"></i>',
+                    warn: '<i class="fas fa-exclamation-triangle text-amber-400 w-4"></i>',
+                    progress: '<i class="fas fa-spinner fa-pulse text-blue-400 w-4"></i>'
+                };
+                const icon = iconMap[type] || iconMap.info;
+                let colorClass = 'text-slate-300';
+                if (type === 'success') colorClass = 'text-emerald-300';
+                else if (type === 'error') colorClass = 'text-rose-300';
+                else if (type === 'warn') colorClass = 'text-amber-300';
+                
+                entry.innerHTML = `<div class="flex items-start gap-2 ${colorClass}"><span class="mt-0.5">${icon}</span><span class="flex-1">${message}</span></div>`;
+                logContainer.appendChild(entry);
+                logContainer.scrollTop = logContainer.scrollHeight;
+                // Giới hạn 30 dòng
+                if (logContainer.children.length > 30) logContainer.removeChild(logContainer.children[0]);
             }
-        }
 
-        downloadBtn.addEventListener('click', startDownload);
-        urlInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') startDownload(); });
-        clearBtn.addEventListener('click', () => { logContainer.innerHTML = '<div class="text-gray-500">✨ Đã xóa nhật ký.</div>'; });
+            // Clear log
+            clearBtn.addEventListener('click', () => {
+                logContainer.innerHTML = '<div class="text-slate-400 flex items-center gap-2"><i class="fas fa-circle-notch text-cyan-400 text-xs"></i> Đã xóa nhật ký.</div>';
+            });
+
+            // Xử lý tải
+            async function handleDownload() {
+                const url = urlInput.value.trim();
+                if (!url) {
+                    addLog('Vui lòng nhập URL.', 'warn');
+                    return;
+                }
+
+                // Xác định tham số
+                let downloadUrl = `/api/download?url=${encodeURIComponent(url)}`;
+                if (url.includes('mangadex.org/title')) {
+                    const lang = langSelect.value;
+                    const limit = limitInput.value;
+                    downloadUrl += `&lang=${lang}`;
+                    if (limit && limit !== '0') downloadUrl += `&limit=${limit}`;
+                }
+
+                addLog(`🔍 Bắt đầu xử lý: ${url}`, 'info');
+                if (url.includes('mangadex.org/title')) {
+                    addLog(`⚙️ Ngôn ngữ: ${langSelect.value}, giới hạn: ${limitInput.value === '0' ? 'tất cả' : limitInput.value} chapter`, 'info');
+                }
+                
+                downloadBtn.disabled = true;
+                downloadBtn.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Đang chuẩn bị...';
+                
+                const progressMsg = addLog('⏳ Đang tải dữ liệu và nén ZIP... (có thể mất vài phút)', 'progress');
+
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 phút timeout
+                    
+                    const response = await fetch(downloadUrl, { signal: controller.signal });
+                    clearTimeout(timeoutId);
+                    
+                    if (!response.ok) {
+                        let errMsg = `Lỗi server (${response.status})`;
+                        try {
+                            const err = await response.json();
+                            errMsg = err.error || errMsg;
+                        } catch (e) {}
+                        throw new Error(errMsg);
+                    }
+
+                    const blob = await response.blob();
+                    const contentDisp = response.headers.get('Content-Disposition');
+                    let filename = 'download.zip';
+                    if (contentDisp) {
+                        const match = contentDisp.match(/filename\*=UTF-8''(.+)/);
+                        if (match) filename = decodeURIComponent(match[1]);
+                    }
+
+                    // Tạo download
+                    const blobUrl = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = blobUrl;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    URL.revokeObjectURL(blobUrl);
+
+                    addLog(`✅ Tải thành công: ${filename}`, 'success');
+                } catch (error) {
+                    if (error.name === 'AbortError') {
+                        addLog('❌ Hết thời gian chờ (120s). Có thể do quá nhiều ảnh hoặc mạng chậm.', 'error');
+                    } else {
+                        addLog(`❌ Lỗi: ${error.message}`, 'error');
+                    }
+                } finally {
+                    downloadBtn.disabled = false;
+                    downloadBtn.innerHTML = '<i class="fas fa-download"></i> Tải ZIP';
+                }
+            }
+
+            // Proxy ảnh đơn
+            function handleProxy() {
+                const url = urlInput.value.trim();
+                if (!url) {
+                    addLog('Nhập URL ảnh để proxy.', 'warn');
+                    return;
+                }
+                // Nếu là link trang, thử lấy ảnh đầu? Không, chỉ proxy trực tiếp nếu là ảnh.
+                if (url.match(/\.(jpg|jpeg|png|gif|webp)/i)) {
+                    const proxyUrl = `/api/proxy?url=${encodeURIComponent(url)}`;
+                    window.open(proxyUrl, '_blank');
+                    addLog(`🖼️ Mở proxy ảnh: ${url}`, 'info');
+                } else {
+                    addLog('URL không phải link ảnh trực tiếp. Dùng chức năng Tải ZIP.', 'warn');
+                }
+            }
+
+            downloadBtn.addEventListener('click', handleDownload);
+            proxyBtn.addEventListener('click', handleProxy);
+            urlInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleDownload(); });
+
+            // Tự động paste nếu có clipboard (tùy chọn)
+            if (navigator.clipboard) {
+                // Có thể thêm nút paste nhỏ, bỏ qua
+            }
+
+            // Hiển thị mặc định
+            addLog('✨ Sẵn sàng. Hỗ trợ MangaDex title/chapter, Pixiv artworks/comic.', 'info');
+        })();
     </script>
 </body>
 </html>
