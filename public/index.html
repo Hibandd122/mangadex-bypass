@@ -121,11 +121,11 @@
                 </button>
             </div>
             <p class="text-[10px] text-slate-500 flex items-center gap-1">
-                <i class="fas fa-info-circle"></i> MangaDex title: bấm "Lấy danh sách chapter", chọn chapter cần tải, rồi Tải ZIP.
+                <i class="fas fa-info-circle"></i> MangaDex title: bấm "Lấy danh sách chapter" (mới nhất trước), chọn chapter cần tải, rồi Tải ZIP.
             </p>
         </div>
 
-        <!-- Khu vực danh sách chapter (chỉ hiện khi là title) -->
+        <!-- Khu vực danh sách chapter -->
         <div id="chapterPanel" class="glass-card rounded-2xl p-5 md:p-6 mb-5 hidden">
             <div class="flex items-center justify-between mb-3">
                 <h3 class="font-semibold text-slate-200 flex items-center gap-2">
@@ -168,7 +168,7 @@
             </div>
         </div>
         <p class="text-center text-[11px] text-slate-500 mt-4 opacity-70">
-            <i class="far fa-copyright mr-1"></i>Proxy serverless · MangaDex & Pixiv Artworks (regular)
+            <i class="far fa-copyright mr-1"></i>Proxy serverless · MangaDex (mới nhất trước) & Pixiv Artworks (regular)
         </p>
     </div>
 
@@ -310,7 +310,7 @@
                     
                     renderChapterList(chaptersData);
                     chapterPanel.classList.remove('hidden');
-                    addLog(`✅ Đã tải ${chaptersData.length} chapter. Chọn chapter cần tải.`, 'success');
+                    addLog(`✅ Đã tải ${chaptersData.length} chapter (mới nhất trước). Chọn chapter cần tải.`, 'success');
                 } catch (error) {
                     addLog(`❌ Lỗi: ${error.message}`, 'error');
                     chapterPanel.classList.add('hidden');
@@ -441,7 +441,7 @@
             proxyBtn.addEventListener('click', handleProxy);
             urlInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleDownload(); });
 
-            addLog('✨ Sẵn sàng. Hỗ trợ MangaDex (title + chọn chapter) và Pixiv artworks.', 'info');
+            addLog('✨ Sẵn sàng. Hỗ trợ MangaDex (title + chọn chapter, mới nhất trước) và Pixiv artworks.', 'info');
         })();
     </script>
 </body>
