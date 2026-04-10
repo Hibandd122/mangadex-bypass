@@ -1,6 +1,6 @@
 // ============================================
 // UNIFIED PROXY — VERCEL EDITION
-// MangaDex (title + chọn chapter) + Pixiv Artworks (regular)
+// MangaDex (title + chọn chapter, mới nhất trước) + Pixiv Artworks (regular)
 // ============================================
 
 const express = require('express');
@@ -81,7 +81,7 @@ app.get('/api/proxy', async (req, res) => {
     }
 });
 
-// Lấy danh sách chapter của MangaDex title
+// Lấy danh sách chapter của MangaDex title (mới nhất trước)
 app.get('/api/chapters', async (req, res) => {
     const { url } = req.query;
     if (!url) return res.status(400).json({ error: 'Missing url' });
@@ -104,7 +104,7 @@ app.get('/api/chapters', async (req, res) => {
                 params: {
                     limit,
                     offset,
-                    order: { chapter: 'asc' },
+                    order: { chapter: 'desc' }, // MỚI NHẤT TRƯỚC
                     includes: ['scanlation_group']
                 }
             });
@@ -182,12 +182,13 @@ app.get('/api/download', async (req, res) => {
                     }
                 }
             } else {
+                // Nếu không chọn chapter, vẫn tải tất cả (giữ thứ tự mới nhất trước)
                 let offset = 0;
                 const limit = 100;
                 while (true) {
                     const feedRes = await axios.get(`https://api.mangadex.org/manga/${mangaId}/feed`, {
                         headers: { 'User-Agent': DEFAULT_USER_AGENT },
-                        params: { limit, offset, order: { chapter: 'asc' } }
+                        params: { limit, offset, order: { chapter: 'desc' } }
                     });
                     const chaps = feedRes.data.data;
                     if (!chaps || chaps.length === 0) break;
