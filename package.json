@@ -1,0 +1,19 @@
+{
+  "name": "mangadex-proxy",
+  "version": "2.1.0",
+  "description": "Unified proxy downloader for MangaDex & Pixiv (auto cookie)",
+  "main": "mangadex_node_proxy.js",
+  "scripts": {
+    "start": "node mangadex_node_proxy.js",
+    "check": "node --check mangadex_node_proxy.js"
+  },
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "axios": "^1.15.0",
+    "cors": "^2.8.6",
+    "express": "^4.22.1"
+  },
+  "engines": {
+    "node": "24.x"
+  }
+}
