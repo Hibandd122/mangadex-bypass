@@ -1,0 +1,57 @@
+name: Build iOS IPA (Sideload)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Unsigned IPA
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        working-directory: ./Nexus-iOS
+        run: npm install
+
+      - name: Prebuild iOS Project
+        working-directory: ./Nexus-iOS
+        run: npx expo prebuild --platform ios --clean
+
+      - name: Install CocoaPods
+        working-directory: ./Nexus-iOS/ios
+        run: pod install
+
+      - name: Build iOS App (Unsigned)
+        working-directory: ./Nexus-iOS/ios
+        run: |
+          xcodebuild -workspace NexusManga.xcworkspace \
+            -scheme NexusManga \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: Package to IPA
+        working-directory: ./Nexus-iOS/ios
+        run: |
+          mkdir -p Payload
+          cp -r build/Build/Products/Release-iphoneos/NexusManga.app Payload/
+          zip -r NexusManga.ipa Payload
+          
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: NexusManga-iOS-App
+          path: ./Nexus-iOS/ios/NexusManga.ipa
