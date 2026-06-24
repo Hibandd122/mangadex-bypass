@@ -46,7 +46,14 @@ jobs:
             AD_HOC_CODE_SIGN_OBJECTS=NO \
             CODE_SIGN_IDENTITY="" \
             PROVISIONING_PROFILE_SPECIFIER="" \
-            COMPILER_INDEX_STORE_ENABLE=NO
+            COMPILER_INDEX_STORE_ENABLE=NO | tee build.log || exit 1
+
+      - name: Upload Build Log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Xcode-Build-Log
+          path: ./Nexus-iOS/ios/build.log
 
       - name: Package to IPA
         working-directory: ./Nexus-iOS/ios
