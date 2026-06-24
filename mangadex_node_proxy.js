@@ -18,12 +18,16 @@ const PIXIV_REFERER = 'https://www.pixiv.net/';
 
 const httpAgent = new http.Agent({
     keepAlive: true,
-    maxSockets: 32,
+    maxSockets: 100,
+    maxFreeSockets: 20,
+    timeout: 60000,
 });
 
 const httpsAgent = new https.Agent({
     keepAlive: true,
-    maxSockets: 32,
+    maxSockets: 100,
+    maxFreeSockets: 20,
+    timeout: 60000,
 });
 
 const httpClient = axios.create({
@@ -141,19 +145,13 @@ async function mapWithConcurrency(items, concurrency, mapper) {
     let nextIndex = 0;
 
     async function worker() {
-        while (true) {
-            const currentIndex = nextIndex;
-            nextIndex += 1;
-
-            if (currentIndex >= items.length) {
-                return;
-            }
-
+        while (nextIndex < items.length) {
+            const currentIndex = nextIndex++;
             results[currentIndex] = await mapper(items[currentIndex], currentIndex);
         }
     }
 
-    await Promise.all(Array.from({ length: workerCount }, () => worker()));
+    await Promise.all(Array.from({ length: workerCount }, worker));
     return results;
 }
 
@@ -344,6 +342,11 @@ async function streamZip(res, filename, items, getHeaders, concurrency = 6) {
             const headers = await getHeaders(item.url, item);
             const response = await fetchStream(item.url, headers);
             archive.append(response.data, { name: item.name });
+            
+            // Release memory immediately after stream ends to assist Garbage Collection
+            response.data.on('end', () => {
+                if (response.data.destroy) response.data.destroy();
+            });
         } catch (error) {
             if (error?.status === 429) {
                 archive.append(
@@ -364,6 +367,11 @@ async function streamZip(res, filename, items, getHeaders, concurrency = 6) {
     });
 
     await archive.finalize();
+    
+    // Explicit GC signal if exposed
+    if (global.gc) {
+        setTimeout(() => global.gc(), 1000);
+    }
 }
 
 app.get('/', (req, res) => {
