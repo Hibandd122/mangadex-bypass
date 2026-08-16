@@ -20,6 +20,7 @@ const PIXIV_REFERER = 'https://www.pixiv.net/';
 const ALLOWED_DOMAINS = [
     'mangadex.org', 'api.mangadex.org', 'uploads.mangadex.org',
     'pixiv.net', 'www.pixiv.net', 'i.pximg.net',
+    'comic.pixiv.net', 'public-img-comic.pximg.net',
 ];
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5-minute cache
 const MAX_CONCURRENCY_FEED = parseInt(process.env.CONCURRENCY_FEED, 10) || 4;
@@ -683,13 +684,95 @@ app.get('/api/chapter/:id', async (req, res) => {
     }
 });
 
-// List chapters (v2 with better data)
+// List chapters (supports MangaDex, Pixiv Comic & Pixiv)
 app.get('/api/chapters', async (req, res) => {
     const { url } = req.query;
     if (!url) return jsonError(res, 400, 'Missing url');
 
-    const mangaId = getMangaDexTitleId(url);
-    if (!mangaId) return jsonError(res, 400, 'URL is not a MangaDex title');
+    const urlStr = String(url).trim();
+
+    // --- 1. Pixiv Comic Works ---
+    if (urlStr.includes('comic.pixiv.net') && urlStr.includes('works/')) {
+        const workMatch = urlStr.match(/works\/(\d+)/i);
+        if (!workMatch) return jsonError(res, 400, 'Work ID not found');
+        const workId = workMatch[1];
+        try {
+            const workRes = await requestGet(`https://comic.pixiv.net/api/app/works/v5/${workId}`, {
+                headers: {
+                    'User-Agent': DEFAULT_USER_AGENT,
+                    'Referer': `https://comic.pixiv.net/works/${workId}`,
+                    'X-Requested-With': 'XMLHttpRequest',
+                }
+            });
+            const workData = workRes.data?.data || {};
+            const officialWork = workData.official_work || {};
+            const mangaTitle = officialWork.name || 'Pixiv Comic';
+
+            let episodes = [];
+            try {
+                const epRes = await requestGet(`https://comic.pixiv.net/api/app/works/${workId}/episodes/v2`, {
+                    headers: {
+                        'User-Agent': DEFAULT_USER_AGENT,
+                        'Referer': `https://comic.pixiv.net/works/${workId}`,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    }
+                });
+                episodes = epRes.data?.data?.episodes || [];
+            } catch (e) {
+                episodes = workData.stories || workData.episodes || [];
+            }
+
+            return res.json({
+                mangaId: workId,
+                mangaTitle,
+                total: episodes.length,
+                chapters: episodes.map((ep, idx) => ({
+                    id: String(ep.id),
+                    chapter: ep.numbering_title || String(idx + 1),
+                    title: ep.sub_title || ep.title || '',
+                    readable: ep.state === 'readable' || ep.sales_type === 'free',
+                    viewerPath: ep.viewer_path || `/viewer/stories/${ep.id}`,
+                    thumbnail: ep.thumbnail_image_url || '',
+                }))
+            });
+        } catch (error) {
+            return sendRouteError(res, error);
+        }
+    }
+
+    // --- 2. Pixiv User Profile ---
+    if (urlStr.includes('pixiv.net') && urlStr.includes('users')) {
+        const userMatch = urlStr.match(/users\/(\d+)/i);
+        if (!userMatch) return jsonError(res, 400, 'User ID not found');
+        const userId = userMatch[1];
+        try {
+            const userRes = await requestGet(`https://www.pixiv.net/ajax/user/${userId}/profile/all?lang=en`, {
+                headers: { 'User-Agent': DEFAULT_USER_AGENT, 'Referer': PIXIV_REFERER }
+            });
+            const body = userRes.data?.body || {};
+            const illusts = Object.keys(body.illusts || {});
+            const manga = Object.keys(body.manga || {});
+            const allIds = [...illusts, ...manga].sort((a, b) => b - a);
+
+            return res.json({
+                mangaId: userId,
+                mangaTitle: `Pixiv User ${userId}`,
+                total: allIds.length,
+                chapters: allIds.map((artId, idx) => ({
+                    id: String(artId),
+                    chapter: `Art #${idx + 1}`,
+                    title: `Artwork ${artId}`,
+                    readable: true,
+                }))
+            });
+        } catch (error) {
+            return sendRouteError(res, error);
+        }
+    }
+
+    // --- 3. MangaDex Title ---
+    const mangaId = getMangaDexTitleId(urlStr);
+    if (!mangaId) return jsonError(res, 400, 'URL is not a supported MangaDex title or Pixiv URL');
 
     try {
         const [mangaResponse, chapters] = await Promise.all([
@@ -820,6 +903,135 @@ app.get('/api/download', async (req, res) => {
             return streamZip(res, zipName, allItems, async () => ({ Referer: MANGADEX_REFERER }), MAX_CONCURRENCY_DOWNLOAD);
         }
 
+        // --- Pixiv Comic Single Episode / Story ---
+        if (String(url).includes('comic.pixiv.net') && (String(url).includes('viewer/stories/') || String(url).includes('episodes/'))) {
+            const epMatch = String(url).match(/(?:stories|episodes)\/(\d+)/i);
+            if (!epMatch) throw new Error('Episode ID not found');
+            const episodeId = epMatch[1];
+
+            // 1. Fetch viewer page to extract salt
+            const viewerPage = await requestGet(`https://comic.pixiv.net/viewer/stories/${episodeId}`, {
+                headers: { 'User-Agent': DEFAULT_USER_AGENT, 'Referer': 'https://comic.pixiv.net/' }
+            });
+            const saltMatch = String(viewerPage.data || '').match(/["']salt["']\s*:\s*["']([^"']+)["']/i);
+            const salt = saltMatch ? saltMatch[1] : '';
+
+            const time = new Date().toISOString().replace(/\.\d{3}Z$/, '+00:00');
+            const hash = crypto.createHash('sha256').update(`${time}${salt}`).digest('hex');
+
+            const readRes = await requestGet(`https://comic.pixiv.net/api/app/episodes/${episodeId}/read_v4`, {
+                headers: {
+                    'User-Agent': DEFAULT_USER_AGENT,
+                    'Referer': `https://comic.pixiv.net/viewer/stories/${episodeId}`,
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-Client-Time': time,
+                    'X-Client-Hash': hash,
+                }
+            });
+
+            const readingEp = readRes.data?.data?.reading_episode;
+            if (!readingEp || !Array.isArray(readingEp.pages) || readingEp.pages.length === 0) {
+                throw new Error('Episode has no readable pages (might require purchase or login)');
+            }
+
+            const items = readingEp.pages.map((p, idx) => {
+                const rawUrl = p.url;
+                const cleanUrl = rawUrl ? rawUrl.replace(/\/c\/[^\/]+\//, '/').split('?')[0] : '';
+                const ext = cleanUrl ? cleanUrl.split('.').pop() : 'jpg';
+                return { url: cleanUrl, name: `${String(idx + 1).padStart(3, '0')}.${ext}` };
+            }).filter(item => item.url);
+
+            return streamZip(res, `PixivComic_${episodeId}.zip`, items, async () => ({
+                'User-Agent': DEFAULT_USER_AGENT,
+                'Referer': 'https://comic.pixiv.net/',
+            }));
+        }
+
+        // --- Pixiv Comic Work (Full Series / Selected Chapters) ---
+        if (String(url).includes('comic.pixiv.net') && String(url).includes('works/')) {
+            const workMatch = String(url).match(/works\/(\d+)/i);
+            if (!workMatch) throw new Error('Work ID not found');
+            const workId = workMatch[1];
+
+            const [workRes, epRes] = await Promise.all([
+                requestGet(`https://comic.pixiv.net/api/app/works/v5/${workId}`, {
+                    headers: {
+                        'User-Agent': DEFAULT_USER_AGENT,
+                        'Referer': `https://comic.pixiv.net/works/${workId}`,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    }
+                }),
+                requestGet(`https://comic.pixiv.net/api/app/works/${workId}/episodes/v2`, {
+                    headers: {
+                        'User-Agent': DEFAULT_USER_AGENT,
+                        'Referer': `https://comic.pixiv.net/works/${workId}`,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    }
+                }).catch(() => ({ data: { data: { episodes: [] } } })),
+            ]);
+
+            const officialWork = workRes.data?.data?.official_work || {};
+            const mangaTitle = sanitizeFilename(officialWork.name || `PixivComic_${workId}`, 'PixivComic');
+            let episodes = (epRes.data?.data?.episodes || []).filter(ep => ep.state === 'readable' || ep.sales_type === 'free');
+
+            if (episodes.length === 0 && officialWork.first_episode) {
+                episodes = [officialWork.first_episode];
+            }
+
+            if (episodes.length === 0) throw new Error('No readable free episodes found in this Pixiv Comic work');
+
+            const allItems = [];
+            let chapNum = 1;
+
+            await mapWithConcurrency(episodes.slice(0, 30), 4, async (ep) => {
+                try {
+                    const epId = ep.id;
+                    const viewerPage = await requestGet(`https://comic.pixiv.net/viewer/stories/${epId}`, {
+                        headers: { 'User-Agent': DEFAULT_USER_AGENT, 'Referer': 'https://comic.pixiv.net/' }
+                    });
+                    const saltMatch = String(viewerPage.data || '').match(/["']salt["']\s*:\s*["']([^"']+)["']/i);
+                    const salt = saltMatch ? saltMatch[1] : '';
+                    const time = new Date().toISOString().replace(/\.\d{3}Z$/, '+00:00');
+                    const hash = crypto.createHash('sha256').update(`${time}${salt}`).digest('hex');
+
+                    const readRes = await requestGet(`https://comic.pixiv.net/api/app/episodes/${epId}/read_v4`, {
+                        headers: {
+                            'User-Agent': DEFAULT_USER_AGENT,
+                            'Referer': `https://comic.pixiv.net/viewer/stories/${epId}`,
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'X-Client-Time': time,
+                            'X-Client-Hash': hash,
+                        }
+                    });
+
+                    const pages = readRes.data?.data?.reading_episode?.pages || [];
+                    const folder = `Chap_${String(chapNum).padStart(2, '0')}`;
+                    chapNum++;
+
+                    pages.forEach((p, idx) => {
+                        const rawUrl = p.url;
+                        if (rawUrl) {
+                            const cleanUrl = rawUrl.replace(/\/c\/[^\/]+\//, '/').split('?')[0];
+                            const ext = cleanUrl.split('.').pop() || 'jpg';
+                            allItems.push({
+                                url: cleanUrl,
+                                name: `${folder}/${String(idx + 1).padStart(3, '0')}.${ext}`,
+                            });
+                        }
+                    });
+                } catch (e) {
+                    console.error(`Failed to fetch episode ${ep.id}:`, e.message);
+                }
+            });
+
+            if (allItems.length === 0) throw new Error('Could not download any pages from this comic work');
+
+            return streamZip(res, `${mangaTitle}.zip`, allItems, async () => ({
+                'User-Agent': DEFAULT_USER_AGENT,
+                'Referer': 'https://comic.pixiv.net/',
+            }));
+        }
+
         // --- Pixiv Artwork ---
         if (String(url).includes('pixiv.net') && String(url).includes('artworks')) {
             const artworkMatch = String(url).match(/artworks\/(\d+)/i);
@@ -832,8 +1044,8 @@ app.get('/api/download', async (req, res) => {
             if (response.data?.error) throw new Error(response.data.message || 'Pixiv API error');
 
             const items = (response.data?.body || []).map((page, index) => {
-                const imageUrl = page.urls?.regular;
-                const extension = imageUrl ? imageUrl.split('.').pop() : 'jpg';
+                const imageUrl = page.urls?.original || page.urls?.regular;
+                const extension = imageUrl ? imageUrl.split('.').pop().split('?')[0] : 'jpg';
                 return { url: imageUrl, name: `${String(index + 1).padStart(3, '0')}.${extension}` };
             }).filter(item => item.url);
 
@@ -868,9 +1080,9 @@ app.get('/api/download', async (req, res) => {
                     const pagesRes = await requestGet(`https://www.pixiv.net/ajax/illust/${artId}/pages?lang=en`, { headers });
                     if (!pagesRes.data?.error && pagesRes.data?.body) {
                         pagesRes.data.body.forEach((page, idx) => {
-                            const imageUrl = page.urls?.regular || page.urls?.original;
+                            const imageUrl = page.urls?.original || page.urls?.regular;
                             if (imageUrl) {
-                                const extension = imageUrl.split('.').pop() || 'jpg';
+                                const extension = imageUrl.split('.').pop().split('?')[0] || 'jpg';
                                 allItems.push({
                                     url: imageUrl,
                                     name: `Chap_${String(chapIndex).padStart(2, '0')}/${String(idx + 1).padStart(3, '0')}.${extension}`,
@@ -914,9 +1126,9 @@ app.get('/api/download', async (req, res) => {
                     const pagesRes = await requestGet(`https://www.pixiv.net/ajax/illust/${artId}/pages?lang=en`, { headers });
                     if (!pagesRes.data?.error && pagesRes.data?.body) {
                         pagesRes.data.body.forEach((page, idx) => {
-                            const imageUrl = page.urls?.regular || page.urls?.original;
+                            const imageUrl = page.urls?.original || page.urls?.regular;
                             if (imageUrl) {
-                                const extension = imageUrl.split('.').pop() || 'jpg';
+                                const extension = imageUrl.split('.').pop().split('?')[0] || 'jpg';
                                 allItems.push({ url: imageUrl, name: `${artId}_p${idx}.${extension}` });
                             }
                         });
@@ -942,7 +1154,7 @@ app.get('/api/download', async (req, res) => {
 app.get('/', (req, res) => {
     res.json({
         name: 'mangadex-proxy',
-        version: '2.5.0',
+        version: '2.6.0',
         apiOnly: true,
         endpoints: [
             'GET /',
